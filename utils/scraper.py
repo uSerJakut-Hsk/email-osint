@@ -33,16 +33,17 @@ class EmailScraper:
         self.proxy_manager = proxy_manager
         self.session = requests.Session()
         self.driver = None
-        self.setup_session()
-        
-        # User agents for rotation
+
+        # User agents for rotation (MOVED UP HERE TO FIX THE ATTRIBUTE ERROR)
         self.user_agents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebPool/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',  # Fixed typo: WebPool -> WebKit
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/119.0',
         ]
+        
+        self.setup_session()  # Now safe to call after user_agents is set
         
     def setup_session(self):
         """Setup requests session with headers and proxy"""

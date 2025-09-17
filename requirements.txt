@@ -1,116 +1,120 @@
-# Advanced Email OSINT Tool Requirements - FIXED VERSION
-# September 2025 - Latest Compatible Versions
-
+    
 # Core dependencies
-requests==2.31.0
-beautifulsoup4==4.12.2
-lxml==4.9.3
+requests>=2.31.0
+beautifulsoup4>=4.12.2
+lxml>=4.9.4  # Bumped to prefer wheels, fallback to 4.9.3 if needed
 
 # Web scraping and automation
-selenium==4.15.2
-webdriver-manager==4.0.1
+selenium>=4.15.2
+webdriver-manager>=4.0.1
 
 # DNS and network utilities
-dnspython==2.4.2
+dnspython>=2.4.2
 
 # Data processing and analysis
-pandas==2.1.4
-numpy==1.24.4
+pandas>=2.2.2  # Bumped to use pre-built wheels
+numpy>=1.26.4  # Aligned with pandas for compatibility
 
 # Excel support
-openpyxl==3.1.2
-xlsxwriter==3.1.9
+openpyxl>=3.1.2
+xlsxwriter>=3.1.9
 
 # HTTP and networking
-urllib3==2.0.7
-certifi==2023.11.17
+urllib3>=2.0.7
+certifi>=2023.11.17
 
 # JSON and data validation
-jsonschema==4.20.0
+jsonschema>=4.20.0
 
 # Logging and utilities
-colorama==0.4.6
-tqdm==4.66.1
+colorama>=0.4.6
+tqdm>=4.66.1
 
 # Email validation
-email-validator==2.1.0
-python-dotenv==1.0.0
+email-validator>=2.1.0
+python-dotenv>=1.0.0
 
 # Proxy and security
-pysocks==1.7.1
-cryptography==41.0.8
+pysocks>=1.7.1
+cryptography>=41.0.8
 
 # Text processing
-regex==2023.10.3
+regex>=2023.10.3
 
 # Date and time utilities
-python-dateutil==2.8.2
+python-dateutil>=2.8.2
 
 # Configuration management
-pyyaml==6.0.1
+pyyaml>=6.0.1
 
 # Testing dependencies
-pytest==7.4.3
-pytest-mock==3.12.0
-pytest-cov==4.1.0
+pytest>=7.4.3
+pytest-mock>=3.12.0
+pytest-cov>=4.1.0
 
 # Development tools (optional)
-black==23.11.0
-flake8==6.1.0
-mypy==1.7.1
+black>=23.11.0
+flake8>=6.1.0
+mypy>=1.7.1
 
 # Additional utilities
-pillow==10.1.0
-psutil==5.9.6
+pillow>=10.1.0
+psutil>=5.9.6
 
 # XML handling for output formatter
-xmltodict==0.13.0
+xmltodict>=0.13.0
 
 # Progress bars and UI
-rich==13.7.0
+rich>=13.7.0
 
 # Cache management
-diskcache==5.6.3
+diskcache>=5.6.3
 
 # HTTP session management
-requests-cache==1.1.1
+requests-cache>=1.1.1
 
 # User agent rotation
-fake-useragent==1.4.0
+fake-useragent>=1.4.0
 
 # HTML parsing enhancements
-pyquery==2.0.0
+pyquery>=2.0.0
 
 # CSV handling improvements
-csvkit==1.1.1
+csvkit>=1.1.1
 
 # JSON handling
-ujson==5.8.0
+ujson>=5.8.0
 
 # Async support (optional)
-aiohttp==3.9.1
-asyncio-throttle==1.0.2
+aiohttp>=3.9.1
+asyncio-throttle>=1.0.2
 
 # Rate limiting
-ratelimit==2.2.1
+ratelimit>=2.2.1
 
 # Database support (optional caching)
-sqlalchemy==2.0.23
+sqlalchemy>=2.0.23
 
 # Mock for testing
-responses==0.24.1
+responses>=0.24.1
 
 # Platform-specific dependencies
 # Windows only (uncomment if on Windows):
-# pywin32==306
+# pywin32>=306
 
-# Note: Removed the following problematic dependencies:
+# Removed dependencies (already built into Python or not needed):
 # - concurrent-futures (built into Python 3.2+)
 # - customtkinter (not used in current GUI implementation)
 # - pathlib2 (built into Python 3.4+)
 
-# Installation notes:
-# 1. Use Python 3.8+ for best compatibility
-# 2. On Linux, install: sudo apt-get install python3-dev build-essential
-# 3. On macOS, install Xcode command line tools: xcode-select --install
-# 4. For Windows, Visual Studio Build Tools may be required
+# Installation notes for Kali Linux:
+# 1. Use Python 3.8+ for best compatibility: `python3 --version`
+# 2. Install system dependencies to avoid slow source builds:
+#    sudo apt update
+#    sudo apt install -y libxml2-dev libxslt1-dev zlib1g-dev python3-dev build-essential g++ gcc
+# 3. Optional: Use a faster PyPI mirror to speed up downloads:
+#    pip3 install -r requirements.txt --index-url https://mirrors.aliyun.com/pypi/simple/
+# 4. To speed up builds, use multiple cores:
+#    pip3 install -r requirements.txt --no-build-isolation --global-option="-j$(nproc)"
+# 5. If still slow, install pandas separately first:
+#    pip3 install pandas>=2.2.2
