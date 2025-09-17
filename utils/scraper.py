@@ -1,381 +1,408 @@
+#!/usr/bin/env python3
 """
-Email Scraper Utility Module
-Handles web scraping operations for email OSINT searches
+Web Scraper Utility for Email OSINT Tool
+Author: Security Researcher
+Date: September 2025
 """
 
 import requests
-import time
-import logging
-from typing import Dict, Optional, List
-from urllib.parse import urljoin, quote_plus
 from bs4 import BeautifulSoup
-import re
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
+import time
+import random
+import logging
+from typing import Dict, List, Optional, Any
+import re
+from urllib.parse import urljoin, urlparse, quote_plus
+import os
+import json
+from datetime import datetime
 
 
 class EmailScraper:
+    """Advanced email scraper with multiple search strategies"""
+    
     def __init__(self, proxy_manager=None):
         self.proxy_manager = proxy_manager
         self.session = requests.Session()
+        self.driver = None
         self.setup_session()
         
         # User agents for rotation
         self.user_agents = [
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0"
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebPool/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/119.0',
         ]
         
     def setup_session(self):
         """Setup requests session with headers and proxy"""
-        self.session.headers.update({
-            'User-Agent': self.user_agents[0],
+        headers = {
+            'User-Agent': random.choice(self.user_agents),
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
             'Accept-Encoding': 'gzip, deflate',
-            'DNT': '1',
             'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-        })
+            'Upgrade-Insecure-Requests': '1',
+        }
+        self.session.headers.update(headers)
         
-        if self.proxy_manager:
+        # Set proxy if available
+        if self.proxy_manager and self.proxy_manager.has_proxies():
             proxy = self.proxy_manager.get_proxy()
             if proxy:
                 self.session.proxies.update(proxy)
                 
-    def search_email_on_platform(self, email: str, platform: Dict) -> Dict:
-        """
-        Search for email on a specific platform
-        
-        Args:
-            email: Email to search for
-            platform: Platform configuration dictionary
+    def get_selenium_driver(self, headless=True):
+        """Initialize Selenium WebDriver with proper options"""
+        if self.driver:
+            return self.driver
             
-        Returns:
-            Dictionary with search results
-        """
+        try:
+            chrome_options = Options()
+            
+            # Basic options
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+            
+            if headless:
+                chrome_options.add_argument('--headless')
+                
+            # Window size
+            chrome_options.add_argument('--window-size=1920,1080')
+            
+            # User agent
+            chrome_options.add_argument(f'--user-agent={random.choice(self.user_agents)}')
+            
+            # Proxy setup
+            if self.proxy_manager and self.proxy_manager.has_proxies():
+                proxy = self.proxy_manager.get_proxy_string()
+                if proxy:
+                    chrome_options.add_argument(f'--proxy-server={proxy}')
+                    
+            # Initialize driver
+            service = Service(ChromeDriverManager().install())
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            
+            # Execute script to remove webdriver property
+            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            return self.driver
+            
+        except Exception as e:
+            logging.error(f"Failed to initialize Chrome driver: {e}")
+            return None
+            
+    def search_email_on_platform(self, email: str, platform: Dict) -> Dict:
+        """Search for email on a specific platform"""
         platform_name = platform.get('name', 'Unknown')
         platform_url = platform.get('url', '')
         
-        logging.info(f"Searching {platform_name} ({platform_url}) for {email}")
-        
-        result = {
-            "platform": platform_name,
-            "url": platform_url,
-            "email": email,
-            "timestamp": time.time(),
-            "status": "not_found",
-            "details": {},
-            "matches": []
-        }
+        logging.info(f"Searching {platform_name} for {email}")
         
         try:
-            # Different search strategies based on platform type
-            if 'google.com' in platform_url:
-                return self._search_google_platform(email, platform, result)
-            elif platform.get('login_required', False):
-                return self._search_login_required_platform(email, platform, result)
-            else:
-                return self._search_public_platform(email, platform, result)
-                
-        except Exception as e:
-            logging.error(f"Error searching {platform_name}: {str(e)}")
-            result['status'] = 'error'
-            result['error'] = str(e)
-            return result
+            # Try different search methods
+            result = None
             
-    def _search_google_platform(self, email: str, platform: Dict, result: Dict) -> Dict:
-        """Search email using Google platforms"""
-        platform_name = platform.get('name', '')
+            # Method 1: Google site search
+            result = self._google_site_search(email, platform)
+            if result and result.get('matches'):
+                return result
+                
+            # Method 2: Platform direct search (if not login required)
+            if not platform.get('login_required', False):
+                result = self._direct_platform_search(email, platform)
+                if result and result.get('matches'):
+                    return result
+                    
+            # Method 3: Advanced Google search with variations
+            result = self._advanced_google_search(email, platform)
+            if result and result.get('matches'):
+                return result
+                
+            # No results found
+            return {
+                'platform': platform_name,
+                'url': platform_url,
+                'status': 'not_found',
+                'matches': [],
+                'search_time': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logging.error(f"Error searching {platform_name}: {e}")
+            return {
+                'platform': platform_name,
+                'url': platform_url,
+                'status': 'error',
+                'error': str(e),
+                'search_time': datetime.now().isoformat()
+            }
+            
+    def _google_site_search(self, email: str, platform: Dict) -> Dict:
+        """Search using Google site: operator"""
+        platform_name = platform.get('name', 'Unknown')
         platform_url = platform.get('url', '')
         
         try:
-            if 'google.com/search' in platform_url:
-                # Google Search
-                search_query = f'"{email}"'
-                search_url = f"https://www.google.com/search?q={quote_plus(search_query)}"
-                
-            elif 'images.google.com' in platform_url:
-                # Google Images
-                search_query = f'"{email}"'
-                search_url = f"https://images.google.com/search?q={quote_plus(search_query)}"
-                
-            elif 'news.google.com' in platform_url:
-                # Google News
-                search_query = f'"{email}"'
-                search_url = f"https://news.google.com/search?q={quote_plus(search_query)}"
-                
-            elif 'scholar.google.com' in platform_url:
-                # Google Scholar
-                search_query = f'"{email}"'
-                search_url = f"https://scholar.google.com/scholar?q={quote_plus(search_query)}"
-                
-            else:
-                # Generic Google platform search
-                search_query = f'site:{platform_url} "{email}"'
-                search_url = f"https://www.google.com/search?q={quote_plus(search_query)}"
+            # Build Google search query
+            query = f'site:{platform_url} "{email}"'
+            google_url = f"https://www.google.com/search?q={quote_plus(query)}"
             
-            response = self.session.get(search_url, timeout=15)
+            # Add random delay
+            time.sleep(random.uniform(1, 3))
             
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                
-                # Check for results
-                if self._has_search_results(soup, email):
-                    result['status'] = 'found'
-                    result['details']['search_url'] = search_url
-                    result['details']['results_found'] = True
-                    result['matches'] = self._extract_google_results(soup, email)
-                else:
-                    result['status'] = 'not_found'
-                    result['details']['search_url'] = search_url
-                    result['details']['results_found'] = False
-            else:
-                result['status'] = 'error'
-                result['error'] = f"HTTP {response.status_code}"
-                
+            response = self.session.get(google_url, timeout=15)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            matches = []
+            
+            # Parse Google search results
+            search_results = soup.find_all('div', class_='g')
+            
+            for result in search_results[:5]:  # Limit to first 5 results
+                try:
+                    title_elem = result.find('h3')
+                    link_elem = result.find('a')
+                    snippet_elem = result.find('span', class_='st') or result.find('div', class_='s')
+                    
+                    if title_elem and link_elem:
+                        title = title_elem.get_text(strip=True)
+                        link = link_elem.get('href', '')
+                        snippet = snippet_elem.get_text(strip=True) if snippet_elem else ''
+                        
+                        # Check if email is mentioned in results
+                        if email.lower() in (title.lower() + ' ' + snippet.lower()):
+                            matches.append({
+                                'title': title,
+                                'url': link,
+                                'snippet': snippet,
+                                'confidence': 0.8,
+                                'source': 'google_site_search'
+                            })
+                            
+                except Exception as e:
+                    logging.debug(f"Error parsing search result: {e}")
+                    continue
+                    
+            status = 'found' if matches else 'not_found'
+            
+            return {
+                'platform': platform_name,
+                'url': platform_url,
+                'status': status,
+                'matches': matches,
+                'search_method': 'google_site_search',
+                'search_time': datetime.now().isoformat()
+            }
+            
         except Exception as e:
-            result['status'] = 'error'
-            result['error'] = str(e)
+            logging.error(f"Google site search failed for {platform_name}: {e}")
+            raise
             
-        return result
-        
-    def _search_public_platform(self, email: str, platform: Dict, result: Dict) -> Dict:
-        """Search email on public platforms that don't require login"""
+    def _direct_platform_search(self, email: str, platform: Dict) -> Dict:
+        """Direct search on platform (if no login required)"""
+        platform_name = platform.get('name', 'Unknown')
         platform_url = platform.get('url', '')
         search_endpoint = platform.get('search_endpoint', '/search')
         
         try:
-            # Construct search URL
+            # Build search URL
             base_url = f"https://{platform_url}"
+            search_url = urljoin(base_url, search_endpoint)
             
-            if search_endpoint:
-                search_url = urljoin(base_url, search_endpoint)
-                # Add search query parameter
-                if '?' in search_url:
-                    search_url += f"&q={quote_plus(email)}"
-                else:
-                    search_url += f"?q={quote_plus(email)}"
-            else:
-                # Use Google to search the site
-                search_query = f'site:{platform_url} "{email}"'
-                search_url = f"https://www.google.com/search?q={quote_plus(search_query)}"
+            # Try different search parameters
+            search_params = [
+                {'q': email},
+                {'query': email},
+                {'search': email},
+                {'keyword': email},
+                {'term': email}
+            ]
             
-            response = self.session.get(search_url, timeout=15)
+            matches = []
             
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                
-                # Look for email mentions in the page
-                if self._contains_email(soup, email):
-                    result['status'] = 'found'
-                    result['details']['search_url'] = search_url
-                    result['matches'] = self._extract_email_contexts(soup, email)
-                else:
-                    result['status'] = 'not_found'
-                    result['details']['search_url'] = search_url
-            else:
-                result['status'] = 'error'
-                result['error'] = f"HTTP {response.status_code}"
-                
+            for params in search_params:
+                try:
+                    time.sleep(random.uniform(1, 2))
+                    
+                    response = self.session.get(search_url, params=params, timeout=15)
+                    if response.status_code == 200:
+                        matches.extend(self._parse_platform_results(response.text, email, platform))
+                        
+                    if matches:  # Stop if we found results
+                        break
+                        
+                except Exception as e:
+                    logging.debug(f"Search parameter {params} failed: {e}")
+                    continue
+                    
+            status = 'found' if matches else 'not_found'
+            
+            return {
+                'platform': platform_name,
+                'url': platform_url,
+                'status': status,
+                'matches': matches,
+                'search_method': 'direct_platform_search',
+                'search_time': datetime.now().isoformat()
+            }
+            
         except Exception as e:
-            result['status'] = 'error'
-            result['error'] = str(e)
+            logging.error(f"Direct platform search failed for {platform_name}: {e}")
+            raise
             
-        return result
-        
-    def _search_login_required_platform(self, email: str, platform: Dict, result: Dict) -> Dict:
-        """Search email on platforms that require login (limited functionality)"""
+    def _advanced_google_search(self, email: str, platform: Dict) -> Dict:
+        """Advanced Google search with email variations"""
+        platform_name = platform.get('name', 'Unknown')
         platform_url = platform.get('url', '')
         
         try:
-            # For login-required platforms, we can only check public pages
-            # or use Google to search the domain
-            search_query = f'site:{platform_url} "{email}"'
-            search_url = f"https://www.google.com/search?q={quote_plus(search_query)}"
+            username = email.split('@')[0]
+            domain = email.split('@')[1]
             
-            response = self.session.get(search_url, timeout=15)
+            # Advanced search queries
+            queries = [
+                f'site:{platform_url} "{username}"',
+                f'site:{platform_url} "{username}" "{domain}"',
+                f'site:{platform_url} "{email.replace(".", " ")}"',
+                f'site:{platform_url} "{username}*{domain}"'
+            ]
             
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                
-                if self._has_search_results(soup, email):
-                    result['status'] = 'potential_match'
-                    result['details']['search_url'] = search_url
-                    result['details']['note'] = 'Found via Google search - login required for verification'
-                    result['matches'] = self._extract_google_results(soup, email)
-                else:
-                    result['status'] = 'not_found'
-                    result['details']['search_url'] = search_url
-                    result['details']['note'] = 'No public results found via Google'
-            else:
-                result['status'] = 'error'
-                result['error'] = f"HTTP {response.status_code}"
-                
+            all_matches = []
+            
+            for query in queries:
+                try:
+                    google_url = f"https://www.google.com/search?q={quote_plus(query)}"
+                    time.sleep(random.uniform(2, 4))
+                    
+                    response = self.session.get(google_url, timeout=15)
+                    response.raise_for_status()
+                    
+                    soup = BeautifulSoup(response.content, 'html.parser')
+                    search_results = soup.find_all('div', class_='g')
+                    
+                    for result in search_results[:3]:
+                        try:
+                            title_elem = result.find('h3')
+                            link_elem = result.find('a')
+                            snippet_elem = result.find('span', class_='st') or result.find('div', class_='s')
+                            
+                            if title_elem and link_elem:
+                                title = title_elem.get_text(strip=True)
+                                link = link_elem.get('href', '')
+                                snippet = snippet_elem.get_text(strip=True) if snippet_elem else ''
+                                
+                                # Check for email variations
+                                content = (title + ' ' + snippet).lower()
+                                confidence = 0.3
+                                
+                                if email.lower() in content:
+                                    confidence = 0.9
+                                elif username.lower() in content:
+                                    confidence = 0.6
+                                elif domain.lower() in content:
+                                    confidence = 0.4
+                                    
+                                if confidence > 0.3:
+                                    all_matches.append({
+                                        'title': title,
+                                        'url': link,
+                                        'snippet': snippet,
+                                        'confidence': confidence,
+                                        'source': 'advanced_google_search',
+                                        'query_used': query
+                                    })
+                                    
+                        except Exception as e:
+                            logging.debug(f"Error parsing advanced search result: {e}")
+                            continue
+                            
+                except Exception as e:
+                    logging.debug(f"Advanced query '{query}' failed: {e}")
+                    continue
+                    
+            # Remove duplicates and sort by confidence
+            unique_matches = []
+            seen_urls = set()
+            
+            for match in sorted(all_matches, key=lambda x: x['confidence'], reverse=True):
+                if match['url'] not in seen_urls:
+                    unique_matches.append(match)
+                    seen_urls.add(match['url'])
+                    
+            status = 'potential_match' if unique_matches else 'not_found'
+            
+            return {
+                'platform': platform_name,
+                'url': platform_url,
+                'status': status,
+                'matches': unique_matches[:5],  # Limit to top 5
+                'search_method': 'advanced_google_search',
+                'search_time': datetime.now().isoformat()
+            }
+            
         except Exception as e:
-            result['status'] = 'error'
-            result['error'] = str(e)
+            logging.error(f"Advanced Google search failed for {platform_name}: {e}")
+            raise
             
-        return result
-        
-    def _has_search_results(self, soup: BeautifulSoup, email: str) -> bool:
-        """Check if Google search results contain the email"""
-        # Check for "No results found" or similar messages
-        no_results_indicators = [
-            "did not match any documents",
-            "No results found",
-            "Try different keywords",
-            "Make sure all words are spelled correctly"
-        ]
-        
-        page_text = soup.get_text().lower()
-        for indicator in no_results_indicators:
-            if indicator.lower() in page_text:
-                return False
-        
-        # Look for actual search results
-        search_results = soup.find_all(['div', 'li'], class_=re.compile(r'(result|search)'))
-        
-        for result_div in search_results:
-            if email.lower() in result_div.get_text().lower():
-                return True
-                
-        return len(search_results) > 0
-        
-    def _contains_email(self, soup: BeautifulSoup, email: str) -> bool:
-        """Check if page content contains the email address"""
-        page_text = soup.get_text().lower()
-        return email.lower() in page_text
-        
-    def _extract_google_results(self, soup: BeautifulSoup, email: str) -> List[Dict]:
-        """Extract search result snippets that mention the email"""
+    def _parse_platform_results(self, html_content: str, email: str, platform: Dict) -> List[Dict]:
+        """Parse platform-specific search results"""
         matches = []
-        
-        # Find Google search result containers
-        result_containers = soup.find_all(['div', 'li'], class_=re.compile(r'(g|result)'))
-        
-        for container in result_containers:
-            text = container.get_text()
-            if email.lower() in text.lower():
-                # Try to extract title and URL
-                title_elem = container.find(['h3', 'a'])
-                title = title_elem.get_text() if title_elem else 'No title'
-                
-                url_elem = container.find('a', href=True)
-                url = url_elem['href'] if url_elem else 'No URL'
-                
-                # Extract snippet
-                snippet = text[:200] + '...' if len(text) > 200 else text
-                
-                matches.append({
-                    'title': title,
-                    'url': url,
-                    'snippet': snippet,
-                    'email_mentioned': email
-                })
-                
-        return matches[:5]  # Return top 5 matches
-        
-    def _extract_email_contexts(self, soup: BeautifulSoup, email: str) -> List[Dict]:
-        """Extract contexts where email appears on the page"""
-        matches = []
-        
-        # Find all text nodes that contain the email
-        for element in soup.find_all(text=re.compile(email, re.IGNORECASE)):
-            parent = element.parent
-            if parent:
-                context = element.strip()
-                
-                # Get surrounding context
-                full_text = parent.get_text()
-                email_pos = full_text.lower().find(email.lower())
-                
-                if email_pos != -1:
-                    start = max(0, email_pos - 50)
-                    end = min(len(full_text), email_pos + len(email) + 50)
-                    context = full_text[start:end]
-                    
-                    matches.append({
-                        'context': context,
-                        'element': parent.name,
-                        'email_mentioned': email
-                    })
-                    
-        return matches[:3]  # Return top 3 contexts
-        
-    def search_with_selenium(self, email: str, platform: Dict) -> Dict:
-        """Use Selenium for JavaScript-heavy platforms (backup method)"""
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--window-size=1920,1080')
-        
-        driver = None
-        result = {
-            "platform": platform.get('name', 'Unknown'),
-            "url": platform.get('url', ''),
-            "email": email,
-            "timestamp": time.time(),
-            "status": "not_found",
-            "details": {},
-            "matches": []
-        }
         
         try:
-            driver = webdriver.Chrome(options=options)
-            driver.set_page_load_timeout(30)
+            soup = BeautifulSoup(html_content, 'html.parser')
             
-            # Navigate to platform
-            platform_url = f"https://{platform.get('url', '')}"
-            driver.get(platform_url)
+            # Generic patterns for finding email mentions
+            text_content = soup.get_text().lower()
             
-            # Wait for page to load
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
-            
-            # Search for email in page source
-            if email.lower() in driver.page_source.lower():
-                result['status'] = 'found'
-                result['details']['method'] = 'selenium'
-                result['details']['page_url'] = driver.current_url
-            else:
-                result['status'] = 'not_found'
-                result['details']['method'] = 'selenium'
-                
-        except TimeoutException:
-            result['status'] = 'error'
-            result['error'] = 'Page load timeout'
-        except WebDriverException as e:
-            result['status'] = 'error'
-            result['error'] = f"WebDriver error: {str(e)}"
+            if email.lower() in text_content:
+                # Try to find specific elements containing the email
+                for element in soup.find_all(['div', 'span', 'p', 'a']):
+                    element_text = element.get_text()
+                    if email.lower() in element_text.lower():
+                        matches.append({
+                            'content': element_text.strip()[:200],
+                            'element_type': element.name,
+                            'confidence': 0.8,
+                            'source': 'direct_platform_content'
+                        })
+                        
+                        if len(matches) >= 3:  # Limit matches
+                            break
+                            
         except Exception as e:
-            result['status'] = 'error'
-            result['error'] = str(e)
-        finally:
-            if driver:
-                driver.quit()
+            logging.debug(f"Error parsing platform results: {e}")
+            
+        return matches
+        
+    def close(self):
+        """Clean up resources"""
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception as e:
+                logging.error(f"Error closing WebDriver: {e}")
                 
-        return result
-        
-    def rotate_user_agent(self):
-        """Rotate user agent to avoid detection"""
-        import random
-        new_ua = random.choice(self.user_agents)
-        self.session.headers.update({'User-Agent': new_ua})
-        
-    def reset_session(self):
-        """Reset session and get new proxy if available"""
-        self.session.close()
-        self.session = requests.Session()
-        self.setup_session()
-        self.rotate_user_agent()
+        if self.session:
+            try:
+                self.session.close()
+            except Exception as e:
+                logging.error(f"Error closing session: {e}")
+                
+    def __del__(self):
+        """Destructor to ensure cleanup"""
+        self.close()

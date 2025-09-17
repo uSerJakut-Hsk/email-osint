@@ -1,499 +1,497 @@
+#!/usr/bin/env python3
 """
-Email Validator Utility Module
-Validates email addresses and extracts email-related information
+Email Validator for Email OSINT Tool
+Author: Security Researcher
+Date: September 2025
 """
 
 import re
 import dns.resolver
+import smtplib
 import socket
 import logging
-from typing import Dict, List, Optional, Tuple
-import smtplib
-from email.utils import parseaddr
+from typing import Dict, List, Optional, Tuple, Any
+from email_validator import validate_email, EmailNotValidError
+import requests
+import json
+from datetime import datetime, timedelta
+import os
 
 
 class EmailValidator:
+    """Advanced email validation with multiple validation methods"""
+    
     def __init__(self):
-        # Email regex pattern (RFC 5322 compliant)
-        self.email_pattern = re.compile(
+        self.disposable_domains = set()
+        self.load_disposable_domains()
+        
+        # Email regex patterns
+        self.basic_pattern = re.compile(
             r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         )
         
-        # Common disposable email domains
-        self.disposable_domains = {
-            '10minutemail.com', 'tempmail.org', 'guerrillamail.com',
-            'mailinator.com', 'throwaway.email', 'temp-mail.org',
-            'yopmail.com', 'maildrop.cc', 'trashmail.com',
-            'getnada.com', 'mohmal.com', 'sharklasers.com'
-        }
+        self.advanced_pattern = re.compile(
+            r'^[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9])?@[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?\.[a-zA-Z]{2,}$'
+        )
         
-        # Common email providers for categorization
-        self.email_providers = {
-            'gmail.com': 'Google',
-            'yahoo.com': 'Yahoo',
-            'outlook.com': 'Microsoft',
-            'hotmail.com': 'Microsoft',
-            'live.com': 'Microsoft',
-            'msn.com': 'Microsoft',
-            'aol.com': 'AOL',
-            'icloud.com': 'Apple',
-            'me.com': 'Apple',
-            'mac.com': 'Apple',
-            'protonmail.com': 'ProtonMail',
-            'tutanota.com': 'Tutanota',
-            'zoho.com': 'Zoho',
-            'fastmail.com': 'FastMail'
-        }
+        # Cache for DNS lookups
+        self.dns_cache = {}
+        self.cache_expiry = timedelta(hours=24)
+        
+    def load_disposable_domains(self):
+        """Load list of disposable email domains"""
+        disposable_domains_list = [
+            '10minutemail.com', '20minutemail.com', '33mail.com', '3utilities.com',
+            'emailondeck.com', 'fakeinbox.com', 'guerrillamail.com', 'mailinator.com',
+            'mailtmp.com', 'mohmal.com', 'sharklasers.com', 'tempmail.org',
+            'throwaway.email', 'tmpmail.org', 'yopmail.com', 'dispostable.com',
+            'mailnesia.com', 'sneakemail.com', 'spamgourmet.com', 'tempail.com',
+            'temp-mail.org', 'getairmail.com', 'armyspy.com', 'cuvox.de',
+            'dayrep.com', 'einrot.com', 'fleckens.hu', 'gustr.com',
+            'jourrapide.com', 'superrito.com', 'teleworm.us', 'rhynoodle.com'
+        ]
+        
+        self.disposable_domains.update(disposable_domains_list)
+        
+        # Try to load additional domains from online source
+        try:
+            self.load_online_disposable_domains()
+        except Exception as e:
+            logging.debug(f"Could not load online disposable domains: {e}")
+            
+    def load_online_disposable_domains(self):
+        """Load disposable domains from online source"""
+        urls = [
+            'https://raw.githubusercontent.com/martenson/disposable-email-domains/master/disposable_email_blocklist.conf',
+            'https://raw.githubusercontent.com/disposable/disposable-email-domains/master/domains.txt'
+        ]
+        
+        for url in urls:
+            try:
+                response = requests.get(url, timeout=10)
+                if response.status_code == 200:
+                    domains = response.text.strip().split('\n')
+                    for domain in domains:
+                        domain = domain.strip().lower()
+                        if domain and not domain.startswith('#'):
+                            self.disposable_domains.add(domain)
+                    break
+            except Exception as e:
+                logging.debug(f"Failed to load from {url}: {e}")
+                continue
+                
+        logging.info(f"Loaded {len(self.disposable_domains)} disposable email domains")
         
     def is_valid_email(self, email: str) -> bool:
-        """
-        Validate email address format
-        
-        Args:
-            email: Email address to validate
-            
-        Returns:
-            True if email is valid format, False otherwise
-        """
+        """Basic email format validation"""
         if not email or not isinstance(email, str):
             return False
             
-        # Basic format check
-        if not self.email_pattern.match(email):
-            return False
-            
-        # Additional checks
-        if email.count('@') != 1:
-            return False
-            
-        local, domain = email.split('@')
+        email = email.strip().lower()
         
-        # Local part checks
-        if not local or len(local) > 64:
+        # Basic format check
+        if not self.advanced_pattern.match(email):
             return False
             
-        # Domain checks
-        if not domain or len(domain) > 255:
+        # Length checks
+        if len(email) > 254:  # RFC 5321 limit
             return False
             
-        # Check for consecutive dots
-        if '..' in email:
-            return False
-            
-        # Check for leading/trailing dots in local part
-        if local.startswith('.') or local.endswith('.'):
+        local, domain = email.rsplit('@', 1)
+        if len(local) > 64:  # RFC 5321 limit
             return False
             
         return True
         
-    def extract_email_info(self, email: str) -> Dict[str, any]:
-        """
-        Extract information from email address
-        
-        Args:
-            email: Email address to analyze
-            
-        Returns:
-            Dictionary containing email information
-        """
-        if not self.is_valid_email(email):
-            return {"error": "Invalid email format"}
-            
-        local, domain = email.split('@')
-        
-        info = {
-            "email": email,
-            "local_part": local,
-            "domain": domain,
-            "is_valid": True,
-            "provider": self.email_providers.get(domain.lower(), "Unknown"),
-            "is_disposable": domain.lower() in self.disposable_domains,
-            "domain_info": self.analyze_domain(domain)
-        }
-        
-        # Analyze local part
-        info["local_analysis"] = self.analyze_local_part(local)
-        
-        return info
-        
-    def analyze_local_part(self, local: str) -> Dict[str, any]:
-        """Analyze the local part of email address"""
-        analysis = {
-            "length": len(local),
-            "has_numbers": bool(re.search(r'\d', local)),
-            "has_special_chars": bool(re.search(r'[._%+-]', local)),
-            "pattern_type": "unknown"
-        }
-        
-        # Detect common patterns
-        if '.' in local:
-            parts = local.split('.')
-            if len(parts) == 2:
-                analysis["pattern_type"] = "firstname.lastname"
-                analysis["potential_firstname"] = parts[0]
-                analysis["potential_lastname"] = parts[1]
-        elif re.match(r'^[a-zA-Z]+\d+$', local):
-            analysis["pattern_type"] = "name_number"
-        elif re.match(r'^[a-zA-Z]+$', local):
-            analysis["pattern_type"] = "single_word"
-        elif re.search(r'\d{4}', local):
-            analysis["pattern_type"] = "contains_year"
-            year_match = re.search(r'(19|20)\d{2}', local)
-            if year_match:
-                analysis["potential_birth_year"] = year_match.group()
-                
-        return analysis
-        
-    def analyze_domain(self, domain: str) -> Dict[str, any]:
-        """Analyze domain information"""
-        domain_info = {
-            "domain": domain,
-            "tld": domain.split('.')[-1] if '.' in domain else domain,
-            "subdomain_count": len(domain.split('.')) - 1,
-            "mx_records": [],
-            "a_records": [],
-            "domain_exists": False,
-            "mx_exists": False
-        }
-        
-        try:
-            # Check A records
-            a_records = dns.resolver.resolve(domain, 'A')
-            domain_info["a_records"] = [str(record) for record in a_records]
-            domain_info["domain_exists"] = True
-            
-        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, Exception):
-            pass
-            
-        try:
-            # Check MX records
-            mx_records = dns.resolver.resolve(domain, 'MX')
-            domain_info["mx_records"] = [f"{record.priority} {record.exchange}" for record in mx_records]
-            domain_info["mx_exists"] = True
-            
-        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, Exception):
-            pass
-            
-        return domain_info
-        
-    def check_email_deliverability(self, email: str, timeout: int = 10) -> Dict[str, any]:
-        """
-        Check if email address is potentially deliverable
-        
-        Args:
-            email: Email address to check
-            timeout: Timeout in seconds for checks
-            
-        Returns:
-            Dictionary with deliverability information
-        """
-        if not self.is_valid_email(email):
-            return {"error": "Invalid email format", "deliverable": False}
-            
-        local, domain = email.split('@')
-        
+    def validate_email_advanced(self, email: str) -> Dict[str, Any]:
+        """Comprehensive email validation with detailed results"""
         result = {
-            "email": email,
-            "domain_exists": False,
-            "mx_exists": False,
-            "smtp_check": False,
-            "deliverable_score": 0,
-            "details": {}
+            'email': email,
+            'valid': False,
+            'checks': {
+                'format': False,
+                'dns_exists': False,
+                'mx_record': False,
+                'disposable': False,
+                'smtp_valid': False
+            },
+            'details': {},
+            'score': 0,
+            'timestamp': datetime.now().isoformat()
         }
         
         try:
-            # Check if domain exists (A record)
-            dns.resolver.resolve(domain, 'A')
-            result["domain_exists"] = True
-            result["deliverable_score"] += 30
+            # Step 1: Format validation
+            result['checks']['format'] = self.is_valid_email(email)
+            if not result['checks']['format']:
+                result['details']['format_error'] = 'Invalid email format'
+                return result
+                
+            # Step 2: Use email-validator library
+            try:
+                validation = validate_email(email)
+                result['details']['normalized_email'] = validation.email
+                result['details']['local_part'] = validation.local
+                result['details']['domain'] = validation.domain
+                result['score'] += 20
+            except EmailNotValidError as e:
+                result['details']['validation_error'] = str(e)
+                return result
+                
+            domain = email.split('@')[1].lower()
             
-        except Exception as e:
-            result["details"]["domain_error"] = str(e)
+            # Step 3: Check for disposable email
+            result['checks']['disposable'] = domain in self.disposable_domains
+            if result['checks']['disposable']:
+                result['details']['disposable_domain'] = True
+                result['score'] -= 30
+            else:
+                result['score'] += 10
+                
+            # Step 4: DNS validation
+            dns_result = self.validate_domain_dns(domain)
+            result['checks']['dns_exists'] = dns_result['exists']
+            result['checks']['mx_record'] = dns_result['has_mx']
+            result['details']['dns'] = dns_result
             
-        try:
-            # Check MX records
-            mx_records = dns.resolver.resolve(domain, 'MX')
-            result["mx_exists"] = True
-            result["deliverable_score"] += 40
-            result["details"]["mx_records"] = [str(record) for record in mx_records]
-            
-            # Try SMTP connection (basic check)
-            if mx_records:
-                mx_server = str(mx_records[0].exchange)
-                try:
-                    server = smtplib.SMTP(timeout=timeout)
-                    server.connect(mx_server, 25)
-                    server.helo()
-                    code, message = server.rcpt(email)
-                    server.quit()
+            if result['checks']['dns_exists']:
+                result['score'] += 25
+            if result['checks']['mx_record']:
+                result['score'] += 25
+                
+            # Step 5: SMTP validation (optional and slower)
+            smtp_enabled = os.getenv('SMTP_VALIDATION_ENABLED', 'false').lower() == 'true'
+            if smtp_enabled and result['checks']['mx_record']:
+                smtp_result = self.validate_smtp(email)
+                result['checks']['smtp_valid'] = smtp_result['valid']
+                result['details']['smtp'] = smtp_result
+                
+                if result['checks']['smtp_valid']:
+                    result['score'] += 20
                     
-                    if code == 250:
-                        result["smtp_check"] = True
-                        result["deliverable_score"] += 30
-                    elif code in [450, 451, 452]:  # Temporary failure
-                        result["deliverable_score"] += 15
-                        result["details"]["smtp_note"] = "Temporary failure"
-                        
-                except Exception as e:
-                    result["details"]["smtp_error"] = str(e)
-                    
-        except Exception as e:
-            result["details"]["mx_error"] = str(e)
+            # Final validation score
+            result['valid'] = (
+                result['checks']['format'] and
+                result['checks']['dns_exists'] and
+                result['checks']['mx_record'] and
+                not result['checks']['disposable']
+            )
             
-        # Determine deliverability
-        if result["deliverable_score"] >= 70:
-            result["deliverable"] = True
-        elif result["deliverable_score"] >= 40:
-            result["deliverable"] = "maybe"
-        else:
-            result["deliverable"] = False
+            # Adjust score based on overall validity
+            if result['valid']:
+                result['score'] = max(result['score'], 70)
+            else:
+                result['score'] = min(result['score'], 50)
+                
+        except Exception as e:
+            result['details']['validation_exception'] = str(e)
+            logging.error(f"Email validation error: {e}")
             
         return result
         
-    def extract_emails_from_text(self, text: str) -> List[str]:
-        """
-        Extract email addresses from text
+    def validate_domain_dns(self, domain: str) -> Dict[str, Any]:
+        """Validate domain DNS records"""
+        # Check cache first
+        cache_key = f"dns_{domain}"
+        if cache_key in self.dns_cache:
+            cached_result, timestamp = self.dns_cache[cache_key]
+            if datetime.now() - timestamp < self.cache_expiry:
+                return cached_result
+                
+        result = {
+            'domain': domain,
+            'exists': False,
+            'has_mx': False,
+            'has_a': False,
+            'mx_records': [],
+            'a_records': [],
+            'error': None
+        }
         
-        Args:
-            text: Text to search for email addresses
+        try:
+            # Check A record (domain exists)
+            try:
+                a_records = dns.resolver.resolve(domain, 'A')
+                result['has_a'] = True
+                result['exists'] = True
+                result['a_records'] = [str(record) for record in a_records]
+            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+                pass
+            except Exception as e:
+                result['error'] = f"A record lookup failed: {str(e)}"
+                
+            # Check MX record (can receive email)
+            try:
+                mx_records = dns.resolver.resolve(domain, 'MX')
+                result['has_mx'] = True
+                result['exists'] = True
+                result['mx_records'] = [
+                    {'priority': record.preference, 'exchange': str(record.exchange)}
+                    for record in mx_records
+                ]
+                # Sort by priority
+                result['mx_records'].sort(key=lambda x: x['priority'])
+            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+                pass
+            except Exception as e:
+                if not result['error']:
+                    result['error'] = f"MX record lookup failed: {str(e)}"
+                    
+        except Exception as e:
+            result['error'] = f"DNS validation failed: {str(e)}"
             
-        Returns:
-            List of unique email addresses found
-        """
-        # More comprehensive email regex for extraction
-        email_regex = re.compile(
-            r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        # Cache the result
+        self.dns_cache[cache_key] = (result, datetime.now())
+        
+        return result
+        
+    def validate_smtp(self, email: str, timeout: int = 10) -> Dict[str, Any]:
+        """Validate email using SMTP (can be slow and may be blocked)"""
+        result = {
+            'email': email,
+            'valid': False,
+            'reachable': False,
+            'error': None,
+            'mx_used': None,
+            'response_code': None
+        }
+        
+        try:
+            domain = email.split('@')[1]
+            
+            # Get MX records
+            dns_result = self.validate_domain_dns(domain)
+            if not dns_result['has_mx']:
+                result['error'] = 'No MX records found'
+                return result
+                
+            # Try each MX record
+            for mx_record in dns_result['mx_records']:
+                mx_host = mx_record['exchange'].rstrip('.')
+                result['mx_used'] = mx_host
+                
+                try:
+                    # Connect to SMTP server
+                    server = smtplib.SMTP(timeout=timeout)
+                    server.set_debuglevel(0)
+                    
+                    # Connect and identify
+                    response_code, response_msg = server.connect(mx_host, 25)
+                    result['response_code'] = response_code
+                    
+                    if response_code == 220:
+                        result['reachable'] = True
+                        
+                        # HELO
+                        server.helo()
+                        
+                        # MAIL FROM
+                        server.mail('test@example.com')
+                        
+                        # RCPT TO - this is where we test the email
+                        code, message = server.rcpt(email)
+                        result['response_code'] = code
+                        
+                        # Code 250 means accepted, 550 means rejected
+                        if code == 250:
+                            result['valid'] = True
+                        elif code == 550:
+                            result['valid'] = False
+                            result['error'] = 'Email address rejected'
+                        else:
+                            result['error'] = f"Unexpected response: {code} {message}"
+                            
+                    server.quit()
+                    break  # Successfully tested
+                    
+                except smtplib.SMTPConnectError as e:
+                    result['error'] = f"Connection failed to {mx_host}: {str(e)}"
+                    continue  # Try next MX record
+                except smtplib.SMTPException as e:
+                    result['error'] = f"SMTP error with {mx_host}: {str(e)}"
+                    continue
+                except socket.timeout:
+                    result['error'] = f"Timeout connecting to {mx_host}"
+                    continue
+                except Exception as e:
+                    result['error'] = f"Unexpected error with {mx_host}: {str(e)}"
+                    continue
+                    
+        except Exception as e:
+            result['error'] = f"SMTP validation failed: {str(e)}"
+            
+        return result
+        
+    def extract_emails_from_text(self, text: str) -> List[Dict[str, Any]]:
+        """Extract and validate email addresses from text"""
+        email_pattern = re.compile(
+            r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
         )
         
-        emails = email_regex.findall(text)
+        found_emails = []
+        matches = email_pattern.finditer(text)
         
-        # Validate and deduplicate
-        valid_emails = []
-        for email in emails:
-            if self.is_valid_email(email) and email not in valid_emails:
-                valid_emails.append(email)
-                
-        return valid_emails
-        
-    def normalize_email(self, email: str) -> str:
-        """
-        Normalize email address (lowercase, trim)
-        
-        Args:
-            email: Email address to normalize
+        for match in matches:
+            email = match.group().lower()
+            start_pos = match.start()
+            end_pos = match.end()
             
-        Returns:
-            Normalized email address
-        """
-        if not email:
-            return ""
+            # Basic validation
+            is_valid = self.is_valid_email(email)
             
-        return email.strip().lower()
+            found_emails.append({
+                'email': email,
+                'position': (start_pos, end_pos),
+                'valid_format': is_valid,
+                'context': text[max(0, start_pos-20):end_pos+20]
+            })
+            
+        return found_emails
         
     def generate_email_variations(self, email: str) -> List[str]:
-        """
-        Generate common variations of an email address
-        
-        Args:
-            email: Base email address
-            
-        Returns:
-            List of email variations
-        """
+        """Generate common email variations for searching"""
         if not self.is_valid_email(email):
             return []
             
         local, domain = email.split('@')
-        variations = [email]
+        variations = []
         
-        # Add variations with different separators
+        # Original email
+        variations.append(email)
+        
+        # With dots removed/added
         if '.' in local:
-            # Replace dots with underscores
-            variations.append(local.replace('.', '_') + '@' + domain)
-            # Remove dots
             variations.append(local.replace('.', '') + '@' + domain)
-            
-        if '_' in local:
-            # Replace underscores with dots
-            variations.append(local.replace('_', '.') + '@' + domain)
-            # Remove underscores
-            variations.append(local.replace('_', '') + '@' + domain)
-            
-        # Add common number variations
-        if not re.search(r'\d', local):
-            for num in ['1', '01', '2024', '2025']:
-                variations.append(local + num + '@' + domain)
-                variations.append(local + '.' + num + '@' + domain)
-                variations.append(local + '_' + num + '@' + domain)
-                
-        # Remove duplicates and invalid emails
-        unique_variations = []
-        for var in variations:
-            if self.is_valid_email(var) and var not in unique_variations:
-                unique_variations.append(var)
-                
-        return unique_variations
-        
-    def is_business_email(self, email: str) -> bool:
-        """
-        Determine if email appears to be a business/corporate email
-        
-        Args:
-            email: Email address to check
-            
-        Returns:
-            True if likely business email, False otherwise
-        """
-        if not self.is_valid_email(email):
-            return False
-            
-        domain = email.split('@')[1].lower()
-        
-        # Not a business email if it's a common personal provider
-        personal_providers = {
-            'gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com',
-            'live.com', 'msn.com', 'aol.com', 'icloud.com',
-            'me.com', 'mac.com'
-        }
-        
-        if domain in personal_providers:
-            return False
-            
-        # Likely business if it's not a common personal provider
-        # and has a proper domain structure
-        domain_parts = domain.split('.')
-        if len(domain_parts) >= 2:
-            return True
-            
-        return False
-        
-    def get_email_reputation(self, email: str) -> Dict[str, any]:
-        """
-        Get reputation information for email address
-        
-        Args:
-            email: Email address to check
-            
-        Returns:
-            Dictionary with reputation information
-        """
-        if not self.is_valid_email(email):
-            return {"error": "Invalid email format"}
-            
-        domain = email.split('@')[1].lower()
-        
-        reputation = {
-            "email": email,
-            "domain": domain,
-            "is_disposable": domain in self.disposable_domains,
-            "is_business": self.is_business_email(email),
-            "provider": self.email_providers.get(domain, "Unknown"),
-            "risk_score": 0,
-            "risk_factors": []
-        }
-        
-        # Calculate risk score
-        if reputation["is_disposable"]:
-            reputation["risk_score"] += 50
-            reputation["risk_factors"].append("Disposable email domain")
-            
-        if not reputation["is_business"] and domain not in self.email_providers:
-            reputation["risk_score"] += 20
-            reputation["risk_factors"].append("Unknown email provider")
-            
-        # Check domain age and other factors could be added here
-        # with additional APIs or databases
-        
-        # Determine overall risk level
-        if reputation["risk_score"] >= 70:
-            reputation["risk_level"] = "high"
-        elif reputation["risk_score"] >= 40:
-            reputation["risk_level"] = "medium"
         else:
-            reputation["risk_level"] = "low"
+            # Add dots in common positions
+            if len(local) > 1:
+                variations.append(local[0] + '.' + local[1:] + '@' + domain)
+            if len(local) > 3:
+                variations.append(local[:2] + '.' + local[2:] + '@' + domain)
+                
+        # With numbers
+        for i in range(1, 100):
+            variations.append(local + str(i) + '@' + domain)
+            if i <= 10:
+                variations.append(local + '0' + str(i) + '@' + domain)
+                
+        # With common additions
+        common_additions = ['1', '01', '2025', 'new', 'official', 'real']
+        for addition in common_additions:
+            variations.append(local + addition + '@' + domain)
             
-        return reputation
-        
-    def batch_validate_emails(self, emails: List[str]) -> Dict[str, Dict]:
-        """
-        Validate multiple email addresses
-        
-        Args:
-            emails: List of email addresses to validate
+        # Underscore variations
+        if '.' in local:
+            variations.append(local.replace('.', '_') + '@' + domain)
+        if '_' in local:
+            variations.append(local.replace('_', '.') + '@' + domain)
             
-        Returns:
-            Dictionary mapping emails to their validation results
-        """
-        results = {}
+        # Hyphen variations
+        if '.' in local:
+            variations.append(local.replace('.', '-') + '@' + domain)
+        if '-' in local:
+            variations.append(local.replace('-', '.') + '@' + domain)
+            
+        # Remove duplicates and invalid emails
+        valid_variations = []
+        seen = set()
+        
+        for variation in variations:
+            if variation not in seen and self.is_valid_email(variation):
+                valid_variations.append(variation)
+                seen.add(variation)
+                
+        return valid_variations[:20]  # Limit to 20 variations
+        
+    def get_email_provider_info(self, email: str) -> Dict[str, Any]:
+        """Get information about the email provider"""
+        if not self.is_valid_email(email):
+            return {}
+            
+        domain = email.split('@')[1].lower()
+        
+        # Common email providers
+        providers = {
+            'gmail.com': {
+                'name': 'Google Gmail',
+                'type': 'Free',
+                'security': 'High',
+                'popularity': 'Very High'
+            },
+            'yahoo.com': {
+                'name': 'Yahoo Mail',
+                'type': 'Free',
+                'security': 'Medium',
+                'popularity': 'High'
+            },
+            'outlook.com': {
+                'name': 'Microsoft Outlook',
+                'type': 'Free',
+                'security': 'High',
+                'popularity': 'High'
+            },
+            'hotmail.com': {
+                'name': 'Microsoft Hotmail',
+                'type': 'Free',
+                'security': 'Medium',
+                'popularity': 'Medium'
+            },
+            'icloud.com': {
+                'name': 'Apple iCloud',
+                'type': 'Free',
+                'security': 'High',
+                'popularity': 'Medium'
+            },
+            'protonmail.com': {
+                'name': 'ProtonMail',
+                'type': 'Privacy-focused',
+                'security': 'Very High',
+                'popularity': 'Low'
+            },
+        }
+        
+        provider_info = providers.get(domain, {
+            'name': f'Unknown ({domain})',
+            'type': 'Unknown',
+            'security': 'Unknown',
+            'popularity': 'Unknown'
+        })
+        
+        provider_info['domain'] = domain
+        provider_info['is_disposable'] = domain in self.disposable_domains
+        
+        return provider_info
+        
+    def validate_email_list(self, emails: List[str]) -> Dict[str, Any]:
+        """Validate a list of emails and return summary"""
+        results = {
+            'total_emails': len(emails),
+            'valid_emails': 0,
+            'invalid_emails': 0,
+            'disposable_emails': 0,
+            'detailed_results': [],
+            'summary': {}
+        }
         
         for email in emails:
-            try:
-                results[email] = self.extract_email_info(email)
-            except Exception as e:
-                results[email] = {"error": str(e), "is_valid": False}
-                
-        return results
-        
-    def find_similar_emails(self, email: str, email_list: List[str]) -> List[Dict]:
-        """
-        Find similar email addresses in a list
-        
-        Args:
-            email: Target email address
-            email_list: List of emails to compare against
+            validation = self.validate_email_advanced(email)
+            results['detailed_results'].append(validation)
             
-        Returns:
-            List of similar emails with similarity scores
-        """
-        if not self.is_valid_email(email):
-            return []
-            
-        similar_emails = []
-        target_local = email.split('@')[0].lower()
-        target_domain = email.split('@')[1].lower()
-        
-        for candidate in email_list:
-            if not self.is_valid_email(candidate) or candidate.lower() == email.lower():
-                continue
-                
-            candidate_local = candidate.split('@')[0].lower()
-            candidate_domain = candidate.split('@')[1].lower()
-            
-            similarity_score = 0
-            similarity_factors = []
-            
-            # Domain similarity
-            if candidate_domain == target_domain:
-                similarity_score += 50
-                similarity_factors.append("Same domain")
-            elif candidate_domain.split('.')[-1] == target_domain.split('.')[-1]:
-                similarity_score += 20
-                similarity_factors.append("Same TLD")
-                
-            # Local part similarity
-            if candidate_local == target_local:
-                similarity_score += 50
-                similarity_factors.append("Identical local part")
+            if validation['valid']:
+                results['valid_emails'] += 1
             else:
-                # Check for partial matches
-                if candidate_local in target_local or target_local in candidate_local:
-                    similarity_score += 30
-                    similarity_factors.append("Partial local part match")
-                    
-                # Check for common variations
-                if (candidate_local.replace('.', '') == target_local.replace('.', '') or
-                    candidate_local.replace('_', '') == target_local.replace('_', '')):
-                    similarity_score += 40
-                    similarity_factors.append("Similar local part (punctuation difference)")
-                    
-            if similarity_score >= 30:  # Minimum threshold
-                similar_emails.append({
-                    "email": candidate,
-                    "similarity_factors": similarity_factors
-                    "similarity_score": similarity_score,
-                })
+                results['invalid_emails'] += 1
                 
-        # Sort by similarity score
-        similar_emails.sort(key=lambda x: x["similarity_score"], reverse=True)
-        
-        return similar_emails[:10]  # Return top 10 matches
+            if validation['checks']['disposable']:
+                results['disposable_emails'] += 1
+                
+        # Calculate percentages
+        total = results['total_emails']
+        if total > 0:
+            results['summary'] = {
+                'valid_percentage': (results['valid_emails'] / total) * 100,
+                'invalid_percentage': (results['invalid_emails'] / total) * 100,
+                'disposable_percentage': (results['disposable_emails'] / total) * 100
+            }
+            
+        return results

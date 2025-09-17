@@ -1,5 +1,5 @@
-# Advanced Email OSINT Tool Requirements
-# September 2025 - Latest Versions
+# Advanced Email OSINT Tool Requirements - FIXED VERSION
+# September 2025 - Latest Compatible Versions
 
 # Core dependencies
 requests==2.31.0
@@ -21,9 +21,6 @@ numpy==1.24.4
 openpyxl==3.1.2
 xlsxwriter==3.1.9
 
-# GUI components
-customtkinter==5.2.0
-
 # HTTP and networking
 urllib3==2.0.7
 certifi==2023.11.17
@@ -43,9 +40,6 @@ python-dotenv==1.0.0
 pysocks==1.7.1
 cryptography==41.0.8
 
-# Threading and async
-concurrent-futures==3.1.1
-
 # Text processing
 regex==2023.10.3
 
@@ -54,32 +48,69 @@ python-dateutil==2.8.2
 
 # Configuration management
 pyyaml==6.0.1
-configparser==6.0.0
 
-# Testing (optional)
+# Testing dependencies
 pytest==7.4.3
 pytest-mock==3.12.0
+pytest-cov==4.1.0
 
 # Development tools (optional)
 black==23.11.0
 flake8==6.1.0
 mypy==1.7.1
 
-# Documentation (optional)
-sphinx==7.2.6
-sphinx-rtd-theme==1.3.0
-
 # Additional utilities
 pillow==10.1.0
 psutil==5.9.6
-pathlib2==2.3.7
+
+# XML handling for output formatter
+xmltodict==0.13.0
+
+# Progress bars and UI
+rich==13.7.0
+
+# Cache management
+diskcache==5.6.3
+
+# HTTP session management
+requests-cache==1.1.1
+
+# User agent rotation
+fake-useragent==1.4.0
+
+# HTML parsing enhancements
+pyquery==2.0.0
+
+# CSV handling improvements
+csvkit==1.1.1
+
+# JSON handling
+ujson==5.8.0
+
+# Async support (optional)
+aiohttp==3.9.1
+asyncio-throttle==1.0.2
+
+# Rate limiting
+ratelimit==2.2.1
+
+# Database support (optional caching)
+sqlalchemy==2.0.23
+
+# Mock for testing
+responses==0.24.1
 
 # Platform-specific dependencies
-# Windows: pywin32==306
-# Linux: python3-dev, build-essential
-# macOS: No additional requirements
+# Windows only (uncomment if on Windows):
+# pywin32==306
 
-# Optional: For advanced features
-# scikit-learn==1.3.2
-# networkx==3.2.1
-# matplotlib==3.8.2
+# Note: Removed the following problematic dependencies:
+# - concurrent-futures (built into Python 3.2+)
+# - customtkinter (not used in current GUI implementation)
+# - pathlib2 (built into Python 3.4+)
+
+# Installation notes:
+# 1. Use Python 3.8+ for best compatibility
+# 2. On Linux, install: sudo apt-get install python3-dev build-essential
+# 3. On macOS, install Xcode command line tools: xcode-select --install
+# 4. For Windows, Visual Studio Build Tools may be required

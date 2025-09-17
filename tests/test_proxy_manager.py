@@ -1,443 +1,406 @@
+#!/usr/bin/env python3
 """
-Unit tests for the ProxyManager utility module
+Unit Tests for Proxy Manager
+Author: Security Researcher
+Date: September 2025
 """
 
-import pytest
-import unittest.mock as mock
-from unittest.mock import Mock, patch, mock_open
-import requests
-import tempfile
-import os
-
+import unittest
 import sys
+import os
+import tempfile
+from unittest.mock import Mock, patch, MagicMock
+from datetime import datetime, timedelta
+
+# Add parent directory to path to import utils
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from utils.proxy_manager import ProxyManager
 
 
-class TestProxyManager:
+class TestProxyManager(unittest.TestCase):
+    """Test cases for ProxyManager class"""
     
-    @pytest.fixture
-    def temp_proxy_file(self):
-        """Create a temporary proxy file for testing"""
-        content = """# Test proxy file
+    def setUp(self):
+        """Set up test fixtures before each test method"""
+        # Create temporary proxy file
+        self.temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+        self.temp_file.write("""# Test proxy file
 http://proxy1.example.com:8080
-192.168.1.100:3128
-http://user:pass@proxy2.example.com:8080
-socks5://proxy3.example.com:1080
-invalid-proxy-format
-# Comment line
-203.0.113.1:8080
-"""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
-            f.write(content)
-            f.flush()
-            yield f.name
-        os.unlink(f.name)
-    
-    @pytest.fixture
-    def proxy_manager(self, temp_proxy_file):
-        """Create a ProxyManager instance with test file"""
-        return ProxyManager(proxy_file=temp_proxy_file, timeout=5)
-    
-    @pytest.fixture
-    def proxy_manager_no_file(self):
-        """Create a ProxyManager instance with non-existent file"""
-        return ProxyManager(proxy_file="non_existent_file.txt", timeout=5)
-    
-    def test_proxy_manager_initialization(self, proxy_manager):
-        """Test ProxyManager initialization"""
-        assert proxy_manager.timeout == 5
-        assert len(proxy_manager.proxies) > 0
-        assert isinstance(proxy_manager.working_proxies, list)
-        assert isinstance(proxy_manager.failed_proxies, set)
-    
-    def test_proxy_manager_no_file(self, proxy_manager_no_file):
-        """Test ProxyManager with non-existent file"""
-        assert len(proxy_manager_no_file.proxies) == 0
-        assert len(proxy_manager_no_file.working_proxies) == 0
-    
-    def test_load_proxies(self, proxy_manager):
-        """Test loading proxies from file"""
-        # Should load valid proxies and skip invalid ones
-        assert len(proxy_manager.proxies) == 4  # 4 valid proxies in test file
+http://user:pass@proxy2.example.com:3128
+192.168.1.100:8080
+proxy3.example.com:3128
+# This is a comment
+invalid-proxy-line
+
+https://secure-proxy.example.com:8080
+""")
+        self.temp_file.close()
         
-        valid_proxies = [
-            "http://proxy1.example.com:8080",
-            "192.168.1.100:3128", 
-            "http://user:pass@proxy2.example.com:8080",
-            "socks5://proxy3.example.com:1080"
-        ]
+        self.proxy_manager = ProxyManager(self.temp_file.name)
         
-        for proxy in valid_proxies:
-            assert proxy in proxy_manager.proxies
-            
-        # Invalid proxy should not be loaded
-        assert "invalid-proxy-format" not in proxy_manager.proxies
-    
-    @pytest.mark.parametrize("proxy,expected", [
-        ("http://proxy.example.com:8080", True),
-        ("https://proxy.example.com:8080", True), 
-        ("socks5://proxy.example.com:1080", True),
-        ("192.168.1.1:3128", True),
-        ("proxy.com:80", True),
-        ("invalid-proxy", False),
-        ("http://", False),
-        ("", False),
-        ("proxy:abc", False),  # invalid port
-        ("proxy:-1", False),   # invalid port
-        ("proxy:99999", False) # invalid port
-    ])
-    def test_is_valid_proxy_format(self, proxy_manager, proxy, expected):
-        """Test proxy format validation"""
-        result = proxy_manager._is_valid_proxy_format(proxy)
-        assert result == expected
-    
-    def test_get_proxy_with_working_proxies(self, proxy_manager):
-        """Test getting proxy when working proxies available"""
-        proxy_manager.working_proxies = ["http://working.proxy.com:8080"]
-        
-        proxy_dict = proxy_manager.get_proxy()
-        
-        assert proxy_dict is not None
-        assert 'http' in proxy_dict
-        assert 'https' in proxy_dict
-        assert proxy_dict['http'] == "http://working.proxy.com:8080"
-    
-    def test_get_proxy_no_working_proxies(self, proxy_manager):
-        """Test getting proxy when no working proxies available"""
-        proxy_manager.working_proxies = []
-        proxy_manager.failed_proxies = set()
-        
-        proxy_dict = proxy_manager.get_proxy()
-        
-        assert proxy_dict is not None
-        # Should get a proxy from the main list
-        assert 'http' in proxy_dict
-        assert 'https' in proxy_dict
-    
-    def test_get_proxy_all_failed(self, proxy_manager):
-        """Test getting proxy when all proxies have failed"""
-        proxy_manager.working_proxies = []
-        proxy_manager.failed_proxies = set(proxy_manager.proxies)
-        
-        proxy_dict = proxy_manager.get_proxy()
-        
-        # Should reset failed proxies and return one
-        assert proxy_dict is not None
-        assert len(proxy_manager.failed_proxies) == 0
-    
-    def test_get_proxy_no_proxies(self, proxy_manager_no_file):
-        """Test getting proxy when no proxies available"""
-        proxy_dict = proxy_manager_no_file.get_proxy()
-        assert proxy_dict is None
-    
-    def test_format_proxy_dict_full_url(self, proxy_manager):
-        """Test formatting proxy with full URL"""
-        proxy_url = "http://proxy.example.com:8080"
-        result = proxy_manager._format_proxy_dict(proxy_url)
-        
-        expected = {
-            'http': proxy_url,
-            'https': proxy_url
-        }
-        assert result == expected
-    
-    def test_format_proxy_dict_ip_port(self, proxy_manager):
-        """Test formatting proxy with IP:PORT format"""
-        proxy_url = "192.168.1.1:8080"
-        result = proxy_manager._format_proxy_dict(proxy_url)
-        
-        expected = {
-            'http': "http://192.168.1.1:8080",
-            'https': "http://192.168.1.1:8080"
-        }
-        assert result == expected
-    
-    @patch('utils.proxy_manager.requests.get')
-    def test_validate_proxy_success(self, mock_get, proxy_manager):
-        """Test successful proxy validation"""
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_get.return_value = mock_response
-        
-        is_working, response_time = proxy_manager.validate_proxy("http://proxy.example.com:8080")
-        
-        assert is_working is True
-        assert response_time > 0
-        mock_get.assert_called()
-    
-    @patch('utils.proxy_manager.requests.get')
-    def test_validate_proxy_failure(self, mock_get, proxy_manager):
-        """Test failed proxy validation"""
-        mock_get.side_effect = requests.exceptions.ConnectionError("Connection failed")
-        
-        is_working, response_time = proxy_manager.validate_proxy("http://proxy.example.com:8080")
-        
-        assert is_working is False
-        assert response_time == 0.0
-    
-    @patch('utils.proxy_manager.requests.get')
-    def test_validate_proxy_http_error(self, mock_get, proxy_manager):
-        """Test proxy validation with HTTP error"""
-        mock_response = Mock()
-        mock_response.status_code = 403
-        mock_get.return_value = mock_response
-        
-        is_working, response_time = proxy_manager.validate_proxy("http://proxy.example.com:8080")
-        
-        assert is_working is False
-        assert response_time == 0.0
-    
-    def test_mark_proxy_failed(self, proxy_manager):
-        """Test marking proxy as failed"""
-        proxy_url = "http://proxy.example.com:8080"
-        proxy_manager.working_proxies = [proxy_url]
-        
-        proxy_manager.mark_proxy_failed(proxy_url)
-        
-        assert proxy_url in proxy_manager.failed_proxies
-        assert proxy_url not in proxy_manager.working_proxies
-    
-    def test_get_proxy_stats(self, proxy_manager):
-        """Test getting proxy statistics"""
-        proxy_manager.working_proxies = ["proxy1", "proxy2"]
-        proxy_manager.failed_proxies = {"proxy3"}
-        
-        stats = proxy_manager.get_proxy_stats()
-        
-        assert stats["total_proxies"] == len(proxy_manager.proxies)
-        assert stats["working_proxies"] == 2
-        assert stats["failed_proxies"] == 1
-        assert stats["available_proxies"] == len(proxy_manager.proxies) - 1
-    
-    def test_reset_failed_proxies(self, proxy_manager):
-        """Test resetting failed proxies"""
-        proxy_manager.failed_proxies = {"proxy1", "proxy2", "proxy3"}
-        
-        proxy_manager.reset_failed_proxies()
-        
-        assert len(proxy_manager.failed_proxies) == 0
-    
-    def test_add_proxy_valid(self, proxy_manager):
-        """Test adding valid proxy"""
-        new_proxy = "http://new.proxy.com:8080"
-        original_count = len(proxy_manager.proxies)
-        
-        result = proxy_manager.add_proxy(new_proxy)
-        
-        assert result is True
-        assert new_proxy in proxy_manager.proxies
-        assert len(proxy_manager.proxies) == original_count + 1
-    
-    def test_add_proxy_invalid(self, proxy_manager):
-        """Test adding invalid proxy"""
-        invalid_proxy = "invalid-proxy-format"
-        original_count = len(proxy_manager.proxies)
-        
-        result = proxy_manager.add_proxy(invalid_proxy)
-        
-        assert result is False
-        assert invalid_proxy not in proxy_manager.proxies
-        assert len(proxy_manager.proxies) == original_count
-    
-    def test_add_proxy_duplicate(self, proxy_manager):
-        """Test adding duplicate proxy"""
-        existing_proxy = proxy_manager.proxies[0] if proxy_manager.proxies else "http://test.com:8080"
-        if not proxy_manager.proxies:
-            proxy_manager.proxies.append(existing_proxy)
-        
-        original_count = len(proxy_manager.proxies)
-        
-        result = proxy_manager.add_proxy(existing_proxy)
-        
-        assert result is False
-        assert len(proxy_manager.proxies) == original_count
-    
-    def test_remove_proxy_existing(self, proxy_manager):
-        """Test removing existing proxy"""
-        if not proxy_manager.proxies:
-            proxy_manager.proxies.append("http://test.com:8080")
-        
-        proxy_to_remove = proxy_manager.proxies[0]
-        original_count = len(proxy_manager.proxies)
-        
-        result = proxy_manager.remove_proxy(proxy_to_remove)
-        
-        assert result is True
-        assert proxy_to_remove not in proxy_manager.proxies
-        assert len(proxy_manager.proxies) == original_count - 1
-    
-    def test_remove_proxy_nonexistent(self, proxy_manager):
-        """Test removing non-existent proxy"""
-        nonexistent_proxy = "http://nonexistent.proxy.com:8080"
-        original_count = len(proxy_manager.proxies)
-        
-        result = proxy_manager.remove_proxy(nonexistent_proxy)
-        
-        assert result is False
-        assert len(proxy_manager.proxies) == original_count
-    
-    def test_save_proxies(self, proxy_manager):
-        """Test saving proxies to file"""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-            temp_filename = f.name
-        
+    def tearDown(self):
+        """Clean up after each test"""
+        # Remove temporary file
         try:
-            proxy_manager.working_proxies = [proxy_manager.proxies[0]] if proxy_manager.proxies else []
-            proxy_manager.failed_proxies = {proxy_manager.proxies[1]} if len(proxy_manager.proxies) > 1 else set()
+            os.unlink(self.temp_file.name)
+        except:
+            pass
             
-            proxy_manager.save_proxies(temp_filename)
+    def test_proxy_loading(self):
+        """Test loading proxies from file"""
+        # Should have loaded several proxies
+        self.assertGreater(len(self.proxy_manager.proxies), 0)
+        
+        # Check that comments and invalid lines were ignored
+        proxy_originals = [p['original'] for p in self.proxy_manager.proxies]
+        self.assertNotIn('# This is a comment', proxy_originals)
+        self.assertNotIn('invalid-proxy-line', proxy_originals)
+        
+    def test_proxy_parsing(self):
+        """Test different proxy format parsing"""
+        # Test full URL format
+        proxy1 = self.proxy_manager._parse_proxy_line('http://proxy.com:8080')
+        self.assertIsNotNone(proxy1)
+        self.assertEqual(proxy1['http'], 'http://proxy.com:8080')
+        
+        # Test IP:PORT format
+        proxy2 = self.proxy_manager._parse_proxy_line('192.168.1.1:3128')
+        self.assertIsNotNone(proxy2)
+        self.assertIn('192.168.1.1:3128', proxy2['http'])
+        
+        # Test invalid format
+        proxy3 = self.proxy_manager._parse_proxy_line('invalid')
+        self.assertIsNone(proxy3)
+        
+    def test_proxy_rotation(self):
+        """Test proxy rotation functionality"""
+        # Get multiple proxies
+        proxies = []
+        for _ in range(len(self.proxy_manager.proxies) + 2):
+            proxy = self.proxy_manager.get_proxy()
+            if proxy:
+                proxies.append(proxy)
+                
+        # Should rotate through available proxies
+        if len(self.proxy_manager.proxies) > 1:
+            proxy_urls = [p['http'] for p in proxies]
+            unique_proxies = set(proxy_urls)
+            self.assertGreater(len(unique_proxies), 1)
             
-            # Check file was created and has content
-            assert os.path.exists(temp_filename)
+    def test_proxy_failure_handling(self):
+        """Test proxy failure marking and removal"""
+        if not self.proxy_manager.proxies:
+            self.skipTest("No proxies loaded for testing")
             
-            with open(temp_filename, 'r') as f:
-                content = f.read()
-                assert "# Proxy list for OSINT Email Tool" in content
-                for proxy in proxy_manager.proxies:
-                    assert proxy in content
-                    
-        finally:
-            if os.path.exists(temp_filename):
-                os.unlink(temp_filename)
-    
-    @patch('utils.proxy_manager.requests.get')
-    def test_test_proxy_connectivity_success(self, mock_get, proxy_manager):
-        """Test proxy connectivity test success"""
+        proxy = self.proxy_manager.proxies[0].copy()
+        initial_failures = proxy.get('failures', 0)
+        
+        # Mark proxy as failed
+        self.proxy_manager.mark_proxy_failed(proxy)
+        
+        # Failure count should increase
+        self.assertEqual(proxy['failures'], initial_failures + 1)
+        
+        # Mark as failed multiple times to trigger removal
+        for _ in range(self.proxy_manager.max_retries):
+            self.proxy_manager.mark_proxy_failed(proxy)
+            
+        # Proxy should be in failed list
+        self.assertIn(proxy, self.proxy_manager.failed_proxies)
+        
+    def test_proxy_success_handling(self):
+        """Test proxy success marking"""
+        if not self.proxy_manager.proxies:
+            self.skipTest("No proxies loaded for testing")
+            
+        proxy = self.proxy_manager.proxies[0].copy()
+        initial_successes = proxy.get('successes', 0)
+        
+        # Mark proxy as successful
+        self.proxy_manager.mark_proxy_success(proxy, response_time=1.5)
+        
+        # Success count should increase
+        self.assertEqual(proxy['successes'], initial_successes + 1)
+        
+        # Response time should be recorded
+        self.assertEqual(proxy['avg_response_time'], 1.5)
+        
+        # Should be added to working proxies
+        self.assertIn(proxy, self.proxy_manager.working_proxies)
+        
+    @patch('requests.get')
+    def test_proxy_validation(self, mock_get):
+        """Test single proxy validation"""
+        if not self.proxy_manager.proxies:
+            self.skipTest("No proxies loaded for testing")
+            
         # Mock successful response
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"origin": "203.0.113.1"}
         mock_get.return_value = mock_response
         
-        result = proxy_manager.test_proxy_connectivity("http://proxy.example.com:8080")
+        proxy = self.proxy_manager.proxies[0]
+        result = self.proxy_manager.validate_proxy(proxy)
         
-        assert result["is_working"] is True
-        assert result["ip_address"] == "203.0.113.1"
-        assert result["response_time"] > 0
-        assert result["error"] is None
-    
-    @patch('utils.proxy_manager.requests.get')
-    def test_test_proxy_connectivity_failure(self, mock_get, proxy_manager):
-        """Test proxy connectivity test failure"""
-        mock_get.side_effect = requests.exceptions.ConnectionError("Connection failed")
+        # Should return True for successful validation
+        self.assertTrue(result)
         
-        result = proxy_manager.test_proxy_connectivity("http://proxy.example.com:8080")
+        # Proxy should be marked as working
+        self.assertIn(proxy, self.proxy_manager.working_proxies)
         
-        assert result["is_working"] is False
-        assert result["error"] == "Connection failed"
-    
-    def test_get_best_proxies(self, proxy_manager):
-        """Test getting best performing proxies"""
-        proxy_manager.working_proxies = ["proxy1", "proxy2", "proxy3", "proxy4"]
+    @patch('requests.get')
+    def test_proxy_validation_failure(self, mock_get):
+        """Test proxy validation failure"""
+        if not self.proxy_manager.proxies:
+            self.skipTest("No proxies loaded for testing")
+            
+        # Mock failed response
+        mock_get.side_effect = Exception("Connection failed")
         
-        best_proxies = proxy_manager.get_best_proxies(count=2)
+        proxy = self.proxy_manager.proxies[0]
+        result = self.proxy_manager.validate_proxy(proxy)
         
-        assert len(best_proxies) == 2
-        for proxy in best_proxies:
-            assert proxy in proxy_manager.working_proxies
-    
-    def test_get_best_proxies_no_working(self, proxy_manager):
-        """Test getting best proxies when none are working"""
-        proxy_manager.working_proxies = []
+        # Should return False for failed validation
+        self.assertFalse(result)
         
-        best_proxies = proxy_manager.get_best_proxies(count=5)
+        # Proxy should be marked as failed
+        self.assertGreater(proxy['failures'], 0)
         
-        assert len(best_proxies) == 0
-    
-    def test_is_proxy_available_true(self, proxy_manager):
-        """Test proxy availability check when proxies available"""
-        proxy_manager.failed_proxies = set()
+    def test_proxy_stats(self):
+        """Test proxy statistics calculation"""
+        stats = self.proxy_manager.get_proxy_stats()
         
-        result = proxy_manager.is_proxy_available()
+        # Should have required fields
+        required_fields = ['total_proxies', 'working_proxies', 'failed_proxies', 'success_rate']
+        for field in required_fields:
+            self.assertIn(field, stats)
+            
+        # Success rate should be percentage
+        self.assertGreaterEqual(stats['success_rate'], 0)
+        self.assertLessEqual(stats['success_rate'], 100)
         
-        assert result is (len(proxy_manager.proxies) > 0)
-    
-    def test_is_proxy_available_false(self, proxy_manager):
-        """Test proxy availability check when no proxies available"""
-        proxy_manager.failed_proxies = set(proxy_manager.proxies)
+    def test_dynamic_proxy_management(self):
+        """Test adding and removing proxies dynamically"""
+        initial_count = len(self.proxy_manager.proxies)
         
-        result = proxy_manager.is_proxy_available()
+        # Add new proxy
+        new_proxy = 'http://new-proxy.com:8080'
+        result = self.proxy_manager.add_proxy(new_proxy)
         
-        assert result is False
-
-
-class TestProxyManagerIntegration:
-    """Integration tests for ProxyManager"""
-    
-    def test_full_proxy_lifecycle(self):
-        """Test complete proxy management lifecycle"""
-        # Create temporary file
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
-            f.write("192.168.1.1:8080\nhttp://proxy.example.com:8080\n")
-            f.flush()
-            temp_file = f.name
+        self.assertTrue(result)
+        self.assertEqual(len(self.proxy_manager.proxies), initial_count + 1)
+        
+        # Remove proxy
+        result = self.proxy_manager.remove_proxy(new_proxy)
+        
+        self.assertTrue(result)
+        self.assertEqual(len(self.proxy_manager.proxies), initial_count)
+        
+    def test_best_proxy_selection(self):
+        """Test best proxy selection algorithm"""
+        if not self.proxy_manager.proxies:
+            self.skipTest("No proxies loaded for testing")
+            
+        # Create some working proxies with different performance
+        proxy1 = self.proxy_manager.proxies[0].copy()
+        proxy2 = self.proxy_manager.proxies[0].copy()  # Copy first proxy for testing
+        proxy2['original'] = 'test-proxy-2'
+        
+        # Set different performance metrics
+        self.proxy_manager.mark_proxy_success(proxy1, response_time=2.0)
+        self.proxy_manager.mark_proxy_success(proxy2, response_time=1.0)
+        
+        best_proxy = self.proxy_manager.get_best_proxy()
+        
+        # Should return the faster proxy
+        if best_proxy:
+            self.assertLessEqual(best_proxy['avg_response_time'], proxy1['avg_response_time'])
+            
+    def test_proxy_string_format(self):
+        """Test proxy string format for Selenium"""
+        if not self.proxy_manager.proxies:
+            self.skipTest("No proxies loaded for testing")
+            
+        proxy_string = self.proxy_manager.get_proxy_string()
+        
+        if proxy_string:
+            # Should not contain 'http://' prefix for Selenium
+            self.assertNotIn('http://', proxy_string)
+            
+            # Should contain host:port format
+            self.assertIn(':', proxy_string)
+            
+    def test_cache_cleanup(self):
+        """Test cleanup of old performance data"""
+        if not self.proxy_manager.proxies:
+            self.skipTest("No proxies loaded for testing")
+            
+        proxy = self.proxy_manager.proxies[0]
+        
+        # Set old last_used time
+        proxy['last_used'] = datetime.now() - timedelta(days=10)
+        proxy['failures'] = 5
+        proxy['successes'] = 3
+        
+        # Cleanup old data
+        self.proxy_manager.cleanup_old_performance_data(days=7)
+        
+        # Performance counters should be reset
+        self.assertEqual(proxy['failures'], 0)
+        self.assertEqual(proxy['successes'], 0)
+        
+    def test_working_proxy_save(self):
+        """Test saving working proxies to file"""
+        # Add some working proxies
+        if self.proxy_manager.proxies:
+            proxy = self.proxy_manager.proxies[0]
+            self.proxy_manager.mark_proxy_success(proxy, response_time=1.5)
+            
+        # Save to temporary file
+        temp_output = tempfile.NamedTemporaryFile(mode='w', delete=False)
+        temp_output.close()
         
         try:
-            # Initialize manager
-            pm = ProxyManager(proxy_file=temp_file, timeout=1)
+            result = self.proxy_manager.save_working_proxies(temp_output.name)
+            self.assertTrue(result)
             
-            # Test initial state
-            assert len(pm.proxies) == 2
-            assert pm.is_proxy_available()
+            # File should exist and have content
+            self.assertTrue(os.path.exists(temp_output.name))
             
-            # Add new proxy
-            pm.add_proxy("http://new.proxy.com:8080")
-            assert len(pm.proxies) == 3
-            
-            # Mark one as failed
-            pm.mark_proxy_failed(pm.proxies[0])
-            assert len(pm.failed_proxies) == 1
-            
-            # Get stats
-            stats = pm.get_proxy_stats()
-            assert stats["total_proxies"] == 3
-            assert stats["failed_proxies"] == 1
-            
-            # Reset failures
-            pm.reset_failed_proxies()
-            assert len(pm.failed_proxies) == 0
-            
-            # Remove proxy
-            pm.remove_proxy(pm.proxies[0])
-            assert len(pm.proxies) == 2
-            
+            with open(temp_output.name, 'r') as f:
+                content = f.read()
+                self.assertIn('Working proxies', content)
+                
         finally:
-            os.unlink(temp_file)
-    
-    def test_thread_safety(self, proxy_manager):
-        """Test thread safety of proxy operations"""
+            try:
+                os.unlink(temp_output.name)
+            except:
+                pass
+                
+    def test_proxy_connectivity_test(self):
+        """Test proxy connectivity testing"""
+        if not self.proxy_manager.proxies:
+            self.skipTest("No proxies loaded for testing")
+            
+        proxy = self.proxy_manager.proxies[0]
+        
+        with patch('requests.get') as mock_get:
+            # Mock successful connectivity test
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_get.return_value = mock_response
+            
+            result = self.proxy_manager.test_proxy_connectivity(proxy)
+            
+            # Should have required fields
+            required_fields = ['success', 'response_time', 'status_code']
+            for field in required_fields:
+                self.assertIn(field, result)
+                
+    def test_environment_variables(self):
+        """Test proxy authentication from environment variables"""
+        with patch.dict(os.environ, {'PROXY_AUTH': 'testuser:testpass'}):
+            pm = ProxyManager(self.temp_file.name)
+            
+            # Should have loaded auth from environment
+            self.assertEqual(pm.proxy_auth, 'testuser:testpass')
+            
+    def test_nonexistent_proxy_file(self):
+        """Test handling of nonexistent proxy file"""
+        nonexistent_file = '/path/that/does/not/exist/proxies.txt'
+        pm = ProxyManager(nonexistent_file)
+        
+        # Should handle gracefully
+        self.assertEqual(len(pm.proxies), 0)
+        self.assertFalse(pm.has_proxies())
+        
+    def test_concurrent_proxy_access(self):
+        """Test thread-safe proxy access"""
         import threading
         import time
         
+        if not self.proxy_manager.proxies:
+            self.skipTest("No proxies loaded for testing")
+            
         results = []
         
-        def get_proxy_worker():
+        def get_proxies():
             for _ in range(10):
-                proxy = proxy_manager.get_proxy()
-                results.append(proxy)
+                proxy = self.proxy_manager.get_proxy()
+                if proxy:
+                    results.append(proxy['original'])
                 time.sleep(0.01)
-        
-        # Create multiple threads
+                
+        # Start multiple threads
         threads = []
         for _ in range(3):
-            thread = threading.Thread(target=get_proxy_worker)
+            thread = threading.Thread(target=get_proxies)
             threads.append(thread)
             thread.start()
-        
-        # Wait for all threads to complete
+            
+        # Wait for completion
         for thread in threads:
             thread.join()
+            
+        # Should have gotten proxies without errors
+        self.assertGreater(len(results), 0)
         
-        # Check results
-        assert len(results) == 30  # 3 threads * 10 requests each
-        # All results should be valid proxy dicts or None
-        for result in results:
-            if result is not None:
-                assert 'http' in result
-                assert 'https' in result
+    def test_proxy_reset_functionality(self):
+        """Test resetting failed proxies"""
+        if not self.proxy_manager.proxies:
+            self.skipTest("No proxies loaded for testing")
+            
+        proxy = self.proxy_manager.proxies[0]
+        
+        # Mark proxy as failed multiple times
+        for _ in range(self.proxy_manager.max_retries + 1):
+            self.proxy_manager.mark_proxy_failed(proxy)
+            
+        # Should be in failed list
+        self.assertIn(proxy, self.proxy_manager.failed_proxies)
+        
+        # Reset failed proxies
+        self.proxy_manager.reset_failed_proxies()
+        
+        # Should no longer be in failed list
+        self.assertNotIn(proxy, self.proxy_manager.failed_proxies)
+        
+        # Counters should be reset
+        self.assertEqual(proxy['failures'], 0)
+        self.assertEqual(proxy['successes'], 0)
+
+
+class TestProxyManagerCreation(unittest.TestCase):
+    """Test proxy manager creation and default file handling"""
+    
+    def test_default_proxy_file_creation(self):
+        """Test creation of default proxy file"""
+        # Use non-existent file path
+        test_path = 'test_proxies_temp.txt'
+        
+        # Ensure file doesn't exist
+        if os.path.exists(test_path):
+            os.remove(test_path)
+            
+        try:
+            pm = ProxyManager(test_path)
+            
+            # Default file should be created
+            self.assertTrue(os.path.exists(test_path))
+            
+            # File should have example content
+            with open(test_path, 'r') as f:
+                content = f.read()
+                self.assertIn('Proxy List for Email OSINT Tool', content)
+                self.assertIn('Examples:', content)
+                
+        finally:
+            # Clean up
+            if os.path.exists(test_path):
+                os.remove(test_path)
 
 
 if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+    # Run tests with verbose output
+    unittest.main(verbosity=2)
