@@ -1,0 +1,484 @@
+{
+  "marketplaces": [
+    {
+      "name": "Airbnb",
+      "url": "airbnb.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "accommodation"
+    },
+    {
+      "name": "AliExpress", 
+      "url": "aliexpress.com",
+      "login_required": true,
+      "search_endpoint": "/wholesale",
+      "category": "ecommerce"
+    },
+    {
+      "name": "Amazon Marketplace",
+      "url": "amazon.com",
+      "login_required": true,
+      "search_endpoint": "/s",
+      "category": "ecommerce"
+    },
+    {
+      "name": "eBay",
+      "url": "ebay.com",
+      "login_required": true,
+      "search_endpoint": "/sch/i.html",
+      "category": "ecommerce"
+    },
+    {
+      "name": "Etsy",
+      "url": "etsy.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "handmade"
+    },
+    {
+      "name": "Fiverr",
+      "url": "fiverr.com",
+      "login_required": true,
+      "search_endpoint": "/search/gigs",
+      "category": "services"
+    },
+    {
+      "name": "Flipkart",
+      "url": "flipkart.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "ecommerce"
+    },
+    {
+      "name": "Freelancer",
+      "url": "freelancer.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "services"
+    },
+    {
+      "name": "Gumtree",
+      "url": "gumtree.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "classifieds"
+    },
+    {
+      "name": "Gumroad",
+      "url": "gumroad.com",
+      "login_required": true,
+      "search_endpoint": "/discover",
+      "category": "digital"
+    },
+    {
+      "name": "HomeAdvisor",
+      "url": "homeadvisor.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "services"
+    },
+    {
+      "name": "Kijiji",
+      "url": "kijiji.com",
+      "login_required": true,
+      "search_endpoint": "/b-search.html",
+      "category": "classifieds"
+    },
+    {
+      "name": "PakWheels",
+      "url": "pakwheels.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "automotive"
+    },
+    {
+      "name": "Shein",
+      "url": "shein.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "fashion"
+    },
+    {
+      "name": "Taskrabbit",
+      "url": "taskrabbit.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "services"
+    },
+    {
+      "name": "Temu",
+      "url": "temu.com",
+      "login_required": true,
+      "search_endpoint": "/search_result.html",
+      "category": "ecommerce"
+    },
+    {
+      "name": "Thumbtack",
+      "url": "thumbtack.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "services"
+    },
+    {
+      "name": "Udemy",
+      "url": "udemy.com",
+      "login_required": true,
+      "search_endpoint": "/courses/search",
+      "category": "education"
+    },
+    {
+      "name": "Upwork",
+      "url": "upwork.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "freelance"
+    },
+    {
+      "name": "Vinted",
+      "url": "vinted.com",
+      "login_required": true,
+      "search_endpoint": "/catalog",
+      "category": "fashion"
+    },
+    {
+      "name": "Walmart",
+      "url": "walmart.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "ecommerce"
+    },
+    {
+      "name": "TikTok Shop",
+      "url": "tiktok.com/shop",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "social_commerce"
+    },
+    {
+      "name": "Shopee",
+      "url": "shopee.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "ecommerce"
+    },
+    {
+      "name": "Newegg",
+      "url": "newegg.com",
+      "login_required": false,
+      "search_endpoint": "/p/pl",
+      "category": "electronics"
+    },
+    {
+      "name": "Wayfair",
+      "url": "wayfair.com",
+      "login_required": false,
+      "search_endpoint": "/keyword.php",
+      "category": "furniture"
+    },
+    {
+      "name": "Rakuten",
+      "url": "rakuten.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "ecommerce"
+    },
+    {
+      "name": "Lazada",
+      "url": "lazada.com",
+      "login_required": true,
+      "search_endpoint": "/catalog",
+      "category": "ecommerce"
+    },
+    {
+      "name": "Zalando",
+      "url": "zalando.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "fashion"
+    },
+    {
+      "name": "Mercado Libre",
+      "url": "mercadolibre.com",
+      "login_required": false,
+      "search_endpoint": "/jm/search",
+      "category": "ecommerce"
+    },
+    {
+      "name": "Jumia",
+      "url": "jumia.com",
+      "login_required": false,
+      "search_endpoint": "/catalog",
+      "category": "ecommerce"
+    }
+  ],
+  "discussions": [
+    {
+      "name": "Reddit",
+      "url": "reddit.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "forum"
+    },
+    {
+      "name": "Stack Overflow",
+      "url": "stackoverflow.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "tech_forum"
+    },
+    {
+      "name": "GitHub Community",
+      "url": "github.com/orgs/community/discussions",
+      "login_required": false,
+      "search_endpoint": "",
+      "category": "developer"
+    },
+    {
+      "name": "XDA Forums",
+      "url": "forum.xda-developers.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "tech_forum"
+    },
+    {
+      "name": "Spiceworks Community",
+      "url": "community.spiceworks.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "tech_forum"
+    },
+    {
+      "name": "Quora",
+      "url": "quora.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "qa"
+    },
+    {
+      "name": "Steam Community",
+      "url": "steamcommunity.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "gaming"
+    },
+    {
+      "name": "Discord",
+      "url": "discord.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "chat"
+    },
+    {
+      "name": "Medium",
+      "url": "medium.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "blogging"
+    },
+    {
+      "name": "GameFAQs",
+      "url": "gamefaqs.gamespot.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "gaming"
+    },
+    {
+      "name": "4chan",
+      "url": "4chan.org",
+      "login_required": false,
+      "search_endpoint": "",
+      "category": "imageboard"
+    },
+    {
+      "name": "Slick Deals",
+      "url": "slickdeals.net",
+      "login_required": false,
+      "search_endpoint": "/forums/search.php",
+      "category": "deals"
+    },
+    {
+      "name": "KASKUS",
+      "url": "kaskus.co.id",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "forum"
+    },
+    {
+      "name": "TripAdvisor Forums",
+      "url": "tripadvisor.com",
+      "login_required": false,
+      "search_endpoint": "/Search",
+      "category": "travel"
+    },
+    {
+      "name": "Ars Technica",
+      "url": "arstechnica.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "tech_news"
+    },
+    {
+      "name": "HackerNews",
+      "url": "news.ycombinator.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "tech_news"
+    },
+    {
+      "name": "Tumblr",
+      "url": "tumblr.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "microblog"
+    },
+    {
+      "name": "Mumsnet",
+      "url": "mumsnet.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "parenting"
+    },
+    {
+      "name": "Bodybuilding Forums",
+      "url": "forum.bodybuilding.com",
+      "login_required": false,
+      "search_endpoint": "/search.php",
+      "category": "fitness"
+    },
+    {
+      "name": "Warrior Forum",
+      "url": "warriorforum.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "marketing"
+    }
+  ],
+  "google": [
+    {
+      "name": "Google Search",
+      "url": "google.com/search",
+      "login_required": false,
+      "search_endpoint": "",
+      "category": "web_search"
+    },
+    {
+      "name": "Google Images",
+      "url": "images.google.com",
+      "login_required": false,
+      "search_endpoint": "",
+      "category": "image_search"
+    },
+    {
+      "name": "Google News",
+      "url": "news.google.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "news_search"
+    },
+    {
+      "name": "Google Scholar",
+      "url": "scholar.google.com",
+      "login_required": false,
+      "search_endpoint": "",
+      "category": "academic_search"
+    },
+    {
+      "name": "Google Books",
+      "url": "books.google.com",
+      "login_required": false,
+      "search_endpoint": "",
+      "category": "book_search"
+    },
+    {
+      "name": "Google Patents",
+      "url": "patents.google.com",
+      "login_required": false,
+      "search_endpoint": "",
+      "category": "patent_search"
+    },
+    {
+      "name": "Google Shopping",
+      "url": "shopping.google.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "shopping_search"
+    },
+    {
+      "name": "Google Videos",
+      "url": "google.com/videohp",
+      "login_required": false,
+      "search_endpoint": "",
+      "category": "video_search"
+    },
+    {
+      "name": "Google Dataset Search",
+      "url": "datasetsearch.research.google.com",
+      "login_required": false,
+      "search_endpoint": "",
+      "category": "data_search"
+    },
+    {
+      "name": "Google Trends",
+      "url": "trends.google.com",
+      "login_required": false,
+      "search_endpoint": "/explore",
+      "category": "trend_analysis"
+    },
+    {
+      "name": "Google Maps",
+      "url": "maps.google.com",
+      "login_required": false,
+      "search_endpoint": "/search",
+      "category": "location_search"
+    },
+    {
+      "name": "YouTube",
+      "url": "youtube.com",
+      "login_required": false,
+      "search_endpoint": "/results",
+      "category": "video_platform"
+    },
+    {
+      "name": "Google Play",
+      "url": "play.google.com",
+      "login_required": false,
+      "search_endpoint": "/store/search",
+      "category": "app_store"
+    },
+    {
+      "name": "Gmail",
+      "url": "mail.google.com",
+      "login_required": true,
+      "search_endpoint": "",
+      "category": "email"
+    },
+    {
+      "name": "Google Photos",
+      "url": "photos.google.com",
+      "login_required": true,
+      "search_endpoint": "/search",
+      "category": "photo_storage"
+    },
+    {
+      "name": "Google Docs",
+      "url": "docs.google.com",
+      "login_required": true,
+      "search_endpoint": "",
+      "category": "document"
+    },
+    {
+      "name": "Google Sheets",
+      "url": "sheets.google.com",
+      "login_required": true,
+      "search_endpoint": "",
+      "category": "spreadsheet"
+    },
+    {
+      "name": "Gemini",
+      "url": "gemini.google.com",
+      "login_required": true,
+      "search_endpoint": "",
+      "category": "ai_assistant"
+    }
+  ]
+}
